@@ -3,11 +3,15 @@
 정의서 §2.1(3) Synthesizer:
 - 입력: goal, observations
 - 출력: final_answer 문자열
+
+스트리밍 지원:
+- stream_synthesis(state)를 사용하여 토큰 단위로 최종 답변을 생성할 수 있다.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Generator
 from typing import Any
 
 from agent.llm_client import get_llm_client
@@ -29,8 +33,11 @@ SYNTHESIZER_SYSTEM_PROMPT = """\
 """
 
 
-def _build_user_prompt(state: GraphState) -> str:
-    """Synthesizer에 전달할 user prompt를 구성한다."""
+def build_synthesis_prompt(state: GraphState) -> str:
+    """Synthesizer에 전달할 user prompt를 구성한다.
+
+    synthesizer_node와 stream_synthesis 모두에서 사용한다.
+    """
     observations_text = "없음"
     if state.get("observations"):
         obs_lines = []
@@ -74,7 +81,7 @@ def synthesizer_node(state: GraphState) -> dict[str, Any]:
     """
     logger.info("Synthesizer 노드 실행")
 
-    user_prompt = _build_user_prompt(state)
+    user_prompt = build_synthesis_prompt(state)
     llm = get_llm_client()
 
     try:
@@ -88,4 +95,24 @@ def synthesizer_node(state: GraphState) -> dict[str, Any]:
         "final_answer": final_answer,
         "status": AgentStatus.DONE.value,
     }
+
+
+def stream_synthesis(state: GraphState) -> Generator[str, None, None]:
+    """Synthesizer를 스트리밍 방식으로 실행한다.
+
+    Anthropic의 messages.stream() API를 사용하여 토큰 단위로
+    최종 답변 텍스트 청크를 yield한다.
+
+    Args:
+        state: 현재 그래프 상태 (observations가 수집된 상태)
+
+    Yields:
+        텍스트 청크 문자열
+    """
+    logger.info("Synthesizer 스트리밍 시작")
+
+    user_prompt = build_synthesis_prompt(state)
+    llm = get_llm_client()
+
+    yield from llm.generate_stream(SYNTHESIZER_SYSTEM_PROMPT, user_prompt)
 

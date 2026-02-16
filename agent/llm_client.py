@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Generator
 from typing import Any
 
 import anthropic
@@ -44,6 +45,22 @@ class LLMClient(ABC):
             파싱된 JSON 딕셔너리
         """
 
+    @abstractmethod
+    def generate_stream(
+        self, system_prompt: str, user_prompt: str
+    ) -> Generator[str, None, None]:
+        """텍스트를 스트리밍 방식으로 생성한다.
+
+        SSE를 통해 토큰 단위로 클라이언트에 전달하기 위한 제너레이터.
+
+        Args:
+            system_prompt: 시스템 프롬프트
+            user_prompt: 사용자 프롬프트
+
+        Yields:
+            텍스트 청크 문자열
+        """
+
 
 class AnthropicClient(LLMClient):
     """Anthropic Claude 기반 LLM 클라이언트."""
@@ -71,6 +88,24 @@ class AnthropicClient(LLMClient):
         text = response.content[0].text
         logger.debug("LLM 응답 길이: %d chars", len(text))
         return text
+
+    def generate_stream(
+        self, system_prompt: str, user_prompt: str
+    ) -> Generator[str, None, None]:
+        """Claude의 messages.stream()을 사용하여 텍스트를 스트리밍한다.
+
+        Anthropic SDK의 text_stream 이터레이터를 사용하여 토큰 단위로 yield한다.
+        참고: https://platform.claude.com/docs/ko/build-with-claude/streaming
+        """
+        logger.debug("LLM generate_stream 호출: model=%s", self._model)
+        with self._client.messages.stream(
+            model=self._model,
+            max_tokens=self._max_tokens,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        ) as stream:
+            for text in stream.text_stream:
+                yield text
 
     def generate_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         """Claude를 사용하여 JSON 응답을 생성한다.

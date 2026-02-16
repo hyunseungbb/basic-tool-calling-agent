@@ -3,12 +3,14 @@
 정의서 §3 실행 플로우 및 AI_AGENT_ARCHITECTURE.md 플로우차트에 따라
 Tool Agent Loop를 LangGraph 그래프로 구성한다.
 
-플로우:
+플로우 (스트리밍 모드):
   normalize_goal → policy_node → (route_action) →
-    CALL_TOOL → tool_executor → (check_budget) → policy_node 또는 force_synthesizer
-    WRITE_NOTE → write_note → (check_budget) → policy_node 또는 force_synthesizer
-    SYNTHESIZE → synthesizer_node → END
+    CALL_TOOL → tool_executor → (check_budget) → policy_node 또는 force_synthesizer (placeholder)
+    WRITE_NOTE → write_note → (check_budget) → policy_node 또는 force_synthesizer (placeholder)
+    SYNTHESIZE → synthesizer (placeholder) → END
     STOP → stop_node → END
+  
+  합성 단계는 그래프 외부에서 stream_synthesis()로 스트리밍 처리
 """
 
 from __future__ import annotations
@@ -23,7 +25,6 @@ from agent.config import settings
 from agent.models import ActionType, AgentStatus, GraphState
 from agent.nodes.executor import stop_node, tool_executor_node, write_note_node
 from agent.nodes.policy import policy_node
-from agent.nodes.synthesizer import synthesizer_node
 
 logger = logging.getLogger(__name__)
 
@@ -54,16 +55,6 @@ def normalize_goal(state: GraphState) -> dict[str, Any]:
         "final_answer": "",
         "current_action": {},
     }
-
-
-def force_synthesizer(state: GraphState) -> dict[str, Any]:
-    """예산 초과 시 강제로 Synthesizer를 호출한다.
-
-    정의서 §8.1 의사코드 4번:
-    - 루프가 예산 종료면 Synthesizer 1회 호출로 마무리
-    """
-    logger.info("예산 초과 - 강제 Synthesizer 호출")
-    return synthesizer_node(state)
 
 
 # ──────────────────────────── 라우팅 함수들 ────────────────────────────
@@ -116,34 +107,44 @@ def check_budget(state: GraphState) -> str:
     return "policy"
 
 
-# ──────────────────────────── 그래프 빌드 ────────────────────────────
+# ──────────────────────── 스트리밍 전용 그래프 ────────────────────────
 
 
-def build_graph() -> StateGraph:
-    """LangGraph StateGraph를 구성하고 컴파일한다.
+def _synthesis_placeholder(state: GraphState) -> dict[str, Any]:
+    """스트리밍 전용 placeholder 노드.
+
+    LLM 호출 없이 status=DONE만 설정한다.
+    실제 합성은 그래프 외부에서 stream_synthesis()를 통해 스트리밍된다.
+    """
+    logger.info("Synthesis placeholder - 스트리밍 모드 (LLM 호출 생략)")
+    return {"status": AgentStatus.DONE.value}
+
+
+def build_streaming_graph():
+    """스트리밍 전용 LangGraph StateGraph를 구성하고 컴파일한다.
+
+    synthesizer와 force_synthesizer를 placeholder로 교체하여,
+    그래프는 observations 수집까지만 수행하고
+    합성 단계는 외부에서 스트리밍으로 처리할 수 있게 한다.
 
     Returns:
         컴파일된 LangGraph 그래프
     """
     graph = StateGraph(GraphState)
 
-    # 노드 등록
+    # 노드 등록 (synthesizer를 placeholder로 교체)
     graph.add_node("normalize_goal", normalize_goal)
     graph.add_node("policy", policy_node)
     graph.add_node("tool_executor", tool_executor_node)
     graph.add_node("write_note", write_note_node)
-    graph.add_node("synthesizer", synthesizer_node)
+    graph.add_node("synthesizer", _synthesis_placeholder)
     graph.add_node("stop", stop_node)
-    graph.add_node("force_synthesizer", force_synthesizer)
+    graph.add_node("force_synthesizer", _synthesis_placeholder)
 
-    # 엣지 연결
-    # START → normalize_goal
+    # 엣지 연결 (기존 그래프와 동일한 구조)
     graph.set_entry_point("normalize_goal")
-
-    # normalize_goal → policy
     graph.add_edge("normalize_goal", "policy")
 
-    # policy → (conditional) route_action
     graph.add_conditional_edges(
         "policy",
         route_action,
@@ -155,7 +156,6 @@ def build_graph() -> StateGraph:
         },
     )
 
-    # tool_executor → (conditional) check_budget
     graph.add_conditional_edges(
         "tool_executor",
         check_budget,
@@ -165,7 +165,6 @@ def build_graph() -> StateGraph:
         },
     )
 
-    # write_note → (conditional) check_budget
     graph.add_conditional_edges(
         "write_note",
         check_budget,
@@ -175,24 +174,24 @@ def build_graph() -> StateGraph:
         },
     )
 
-    # 종료 엣지
     graph.add_edge("synthesizer", END)
     graph.add_edge("stop", END)
     graph.add_edge("force_synthesizer", END)
 
     compiled = graph.compile()
-    logger.info("LangGraph 그래프 컴파일 완료")
+    logger.info("스트리밍 전용 LangGraph 그래프 컴파일 완료")
     return compiled
 
 
-# 싱글턴 그래프 인스턴스
-_compiled_graph = None
+# ──────────────────────────── 싱글턴 인스턴스 ────────────────────────────
+
+_compiled_streaming_graph = None
 
 
-def get_graph():
-    """컴파일된 그래프 싱글턴을 반환한다."""
-    global _compiled_graph
-    if _compiled_graph is None:
-        _compiled_graph = build_graph()
-    return _compiled_graph
+def get_streaming_graph():
+    """스트리밍 전용 그래프 싱글턴을 반환한다."""
+    global _compiled_streaming_graph
+    if _compiled_streaming_graph is None:
+        _compiled_streaming_graph = build_streaming_graph()
+    return _compiled_streaming_graph
 
