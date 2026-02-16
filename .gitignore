@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Distribution / Packaging
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker volumes (if any)
+docker/data/
+docker/volumes/
+
+# Temporary files
+*.tmp
+*.bak
+*.cache
+
+# LangGraph / LangChain
+.langchain/
+.langsmith/
+
+# Model files (if downloaded locally)
+models/
+*.bin
+*.pt
+*.pth
+
+# Milvus data (if running locally)
+milvus_data/
+
