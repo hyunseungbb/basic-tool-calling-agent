@@ -1,0 +1,23 @@
+# Core
+fastapi>=0.115.0
+uvicorn>=0.30.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# LangGraph
+langgraph>=0.2.0
+langchain-core>=0.3.0
+
+# LLM
+anthropic>=0.39.0
+google-genai>=1.0.0
+
+# Web Search
+duckduckgo-search>=6.0.0
+
+# Data 적재용
+pandas>=1.2.4
+openpyxl>=3.0.0
+
+# Utilities
+python-dotenv>=1.0.0

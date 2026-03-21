@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source /Users/user/Desktop/개발/agent_modified/venv/bin/activate)",
+      "Bash(python3 -c \":*)",
+      "Bash(grep -v '^[[:space:]]*$')",
+      "Bash(ls /Users/user/Desktop/개발/agent_modified/*.xlsx)",
+      "Bash(ls /Users/user/Desktop/개발/*.xlsx)",
+      "Bash(python3 -m agent.tools.ingest --excel report__9_.xlsx)",
+      "Bash(source venv/bin/activate)",
+      "Bash(python3 -m agent.tools.ingest --excel \"report \\(1\\).xlsx\" \"report \\(2\\).xlsx\" \"report \\(3\\).xlsx\" \"report \\(4\\).xlsx\" \"report \\(5\\).xlsx\" \"report \\(6\\).xlsx\" \"report \\(7\\).xlsx\" \"report__9_.xlsx\")"
+    ]
+  }
+}
