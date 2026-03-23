@@ -1,0 +1,46 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  IMAGE_NAME: ghcr.io/hyunseungbb/tool-agent-backend
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
+
+      - name: Update k8s-gitops image tag
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          git clone https://hyunseungbb:${{ secrets.GITOPS_TOKEN }}@github.com/hyunseungbb/k8s-gitops.git /tmp/k8s-gitops
+          cd /tmp/k8s-gitops
+          sed -i "s|image: ghcr.io/hyunseungbb/tool-agent-backend:.*|image: ghcr.io/hyunseungbb/tool-agent-backend:${{ github.sha }}|" apps/tool-agent-backend/deployment.yaml
+          git add apps/tool-agent-backend/deployment.yaml
+          git commit -m "chore: update tool-agent-backend image to ${{ github.sha }}"
+          git push
