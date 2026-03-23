@@ -2,7 +2,8 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, sy]
+  workflow_dispatch:
 
 env:
   IMAGE_NAME: ghcr.io/hyunseungbb/tool-agent-backend
