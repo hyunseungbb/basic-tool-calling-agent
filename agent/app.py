@@ -13,11 +13,13 @@ import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
+from agent.config import settings
 from agent.graph import get_streaming_graph
 from agent.nodes.synthesizer import stream_synthesis
 
@@ -37,7 +39,7 @@ app = FastAPI(
 # CORS 설정 (React 프론트엔드 연동)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,8 +48,22 @@ app.add_middleware(
 # 인메모리 상태 저장소 (MVP)
 _state_store: dict[str, dict[str, Any]] = {}
 
+# ──────────────────────────── 인증 ────────────────────────────
+
+_bearer = HTTPBearer()
+
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(_bearer)) -> None:
+    if credentials.credentials != settings.auth_token:
+        raise HTTPException(status_code=401, detail="인증 실패")
+
 
 # ──────────────────────────── Request/Response 모델 ────────────────────────────
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
 
 class RunRequest(BaseModel):
@@ -87,8 +103,18 @@ def _sse_event(event: str, data: dict[str, Any]) -> str:
 # ──────────────────────────── 엔드포인트 ────────────────────────────
 
 
+@app.post("/auth/login")
+async def login(request: LoginRequest) -> dict[str, str]:
+    """관리자 로그인: 올바른 ID/PW 입력 시 토큰 반환."""
+    if request.username != settings.admin_username or request.password != settings.admin_password:
+        raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 틀렸습니다.")
+    return {"token": settings.auth_token}
+
+
 @app.post("/agent/run")
-async def run_agent(request: RunRequest) -> StreamingResponse:
+async def run_agent(
+    request: RunRequest, _: None = Depends(verify_token)
+) -> StreamingResponse:
     """에이전트를 실행하여 SSE 스트리밍으로 답변을 생성한다.
 
     SSE 이벤트 형식:
@@ -202,7 +228,7 @@ def _build_step_event(
 
 
 @app.get("/agent/state/{run_id}", response_model=StateResponse)
-async def get_agent_state(run_id: str) -> StateResponse:
+async def get_agent_state(run_id: str, _: None = Depends(verify_token)) -> StateResponse:
     """에이전트 실행 상태를 조회한다.
 
     Args:

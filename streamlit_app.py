@@ -7,29 +7,56 @@ import streamlit as st
 # ── 페이지 설정 ──────────────────────────────────────────────
 st.set_page_config(
     page_title="글로벌 주식시장 AI 챗봇",
-    page_icon="📈",
     layout="wide",
 )
 
 BACKEND_URL = "http://localhost:8000"
 
+# ── 인증 ─────────────────────────────────────────────────────
+if "auth_token" not in st.session_state:
+    st.session_state.auth_token = None
+
+if st.session_state.auth_token is None:
+    st.title("로그인")
+    with st.form("login_form"):
+        username = st.text_input("아이디")
+        password = st.text_input("비밀번호", type="password")
+        submitted = st.form_submit_button("로그인")
+    if submitted:
+        try:
+            res = requests.post(
+                f"{BACKEND_URL}/auth/login",
+                json={"username": username, "password": password},
+                timeout=5,
+            )
+            if res.status_code == 200:
+                st.session_state.auth_token = res.json()["token"]
+                st.rerun()
+            else:
+                st.error("아이디 또는 비밀번호가 틀렸습니다.")
+        except Exception:
+            st.error("서버에 연결할 수 없습니다.")
+    st.stop()
+
+_auth_headers = {"Authorization": f"Bearer {st.session_state.auth_token}"}
+
 # ── 사이드바 ─────────────────────────────────────────────────
 with st.sidebar:
-    st.title("⚙️ 설정")
+    st.title("설정")
     backend_url = st.text_input("백엔드 URL", value=BACKEND_URL)
 
     # 백엔드 상태 확인
     try:
         res = requests.get(f"{backend_url}/health", timeout=2)
         if res.status_code == 200:
-            st.success("✅ 백엔드 연결됨")
+            st.success("백엔드 연결됨")
         else:
-            st.error("❌ 백엔드 응답 오류")
+            st.error("백엔드 응답 오류")
     except Exception:
-        st.error("❌ 백엔드 연결 실패\n`uvicorn agent.app:app` 실행 확인")
+        st.error("백엔드 연결 실패\n`uvicorn agent.app:app` 실행 확인")
 
     st.divider()
-    st.markdown("**💡 질문 예시**")
+    st.markdown("**질문 예시**")
     examples = [
         "상하이 거래소 시가총액은?",
         "Americas 지역 시가총액 TOP 5",
@@ -43,12 +70,15 @@ with st.sidebar:
             st.session_state["pending_input"] = ex
 
     st.divider()
-    if st.button("🗑️ 대화 초기화", use_container_width=True):
+    if st.button("대화 초기화", use_container_width=True):
         st.session_state.messages = []
+        st.rerun()
+    if st.button("로그아웃", use_container_width=True):
+        st.session_state.auth_token = None
         st.rerun()
 
 # ── 메인 영역 ─────────────────────────────────────────────────
-st.title("📈 글로벌 주식시장 AI 챗봇")
+st.title("글로벌 주식시장 AI 챗봇")
 st.caption("WFE 데이터 기반 | Tool Agent Loop (Policy → Executor → Synthesizer)")
 
 # 채팅 히스토리 초기화
@@ -60,7 +90,7 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if msg.get("steps"):
-            with st.expander("🔍 Agent 실행 과정"):
+            with st.expander("Agent 실행 과정"):
                 for step in msg["steps"]:
                     st.markdown(f"- {step}")
 
@@ -87,6 +117,7 @@ if prompt:
             with requests.post(
                 f"{backend_url}/agent/run",
                 json={"message": prompt},
+                headers=_auth_headers,
                 stream=True,
                 timeout=60,
             ) as response:
@@ -111,16 +142,16 @@ if prompt:
                             summary = data.get("summary", "")
 
                             if action == "CALL_TOOL":
-                                step_msg = f"🔧 **Step {cursor}**: `{tool}` 실행 중..."
+                                step_msg = f"**Step {cursor}**: `{tool}` 실행 중..."
                             elif action == "SYNTHESIZE":
-                                step_msg = f"✍️ **Step {cursor}**: 답변 생성 중..."
+                                step_msg = f"**Step {cursor}**: 답변 생성 중..."
                             elif summary:
-                                step_msg = f"📝 **Step {cursor}**: {summary[:100]}"
+                                step_msg = f"**Step {cursor}**: {summary[:100]}"
                             else:
-                                step_msg = f"⚙️ **Step {cursor}**: {data.get('type', '')}"
+                                step_msg = f"**Step {cursor}**: {data.get('type', '')}"
 
                             steps.append(step_msg)
-                            with step_placeholder.expander("🔍 Agent 실행 과정", expanded=True):
+                            with step_placeholder.expander("Agent 실행 과정", expanded=True):
                                 for s in steps:
                                     st.markdown(s)
 
@@ -132,7 +163,7 @@ if prompt:
                             answer_placeholder.markdown(full_answer)
                             step_placeholder.empty()
                             if steps:
-                                with st.expander("🔍 Agent 실행 과정"):
+                                with st.expander("Agent 실행 과정"):
                                     for s in steps:
                                         st.markdown(s)
 
@@ -140,10 +171,10 @@ if prompt:
                             st.error(f"오류: {data.get('message', '')}")
 
         except requests.exceptions.ConnectionError:
-            full_answer = "❌ 백엔드 서버에 연결할 수 없습니다. `uvicorn agent.app:app --port 8000`을 실행하세요."
+            full_answer = "백엔드 서버에 연결할 수 없습니다. `uvicorn agent.app:app --port 8000`을 실행하세요."
             answer_placeholder.error(full_answer)
         except Exception as e:
-            full_answer = f"❌ 오류 발생: {str(e)}"
+            full_answer = f"오류 발생: {str(e)}"
             answer_placeholder.error(full_answer)
 
     # 히스토리 저장

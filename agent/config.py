@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     vector_search_top_k: int = 5
     web_search_top_k: int = 5
 
+    # 인증
+    admin_username: str = "admin"
+    admin_password: str = "changeme"
+    auth_token: str = "changeme-token"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
